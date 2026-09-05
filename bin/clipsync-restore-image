@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# clipsync-restore-image — put the LAST image that arrived from the Mac/iPhone
+# back on the clipboard. Safety net: clipboard managers, selection mirrors, or
+# a stray Ctrl+C can replace an incoming photo before you paste it. clipsync
+# keeps the last incoming image at ~/.local/state/clipsync/remote.png.
+f="${XDG_STATE_HOME:-$HOME/.local/state}/clipsync/remote.png"
+if [[ ! -s "$f" ]]; then
+    echo "no saved incoming image"
+    command -v notify-send >/dev/null && notify-send -a clipsync "clipsync" "No saved incoming image"
+    exit 1
+fi
+wl-copy --type image/png < "$f" || exit 1
+size=$(stat -c%s "$f")
+echo "restored ${size}B from $f"
+command -v notify-send >/dev/null && notify-send -a clipsync "clipsync" "Restored last incoming image ($(( size / 1024 )) KB)"
+exit 0

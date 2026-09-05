@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# primary-mirror — mirror the PRIMARY selection (mouse-highlighted text) onto
+# the regular clipboard so it is available to Ctrl+V in apps that only fill
+# primary. A drop-in for the common one-liner
+#     wl-paste --primary --watch wl-copy
+# invoked as
+#     wl-paste --primary --watch primary-mirror
+# (wl-paste pipes the new selection on stdin each time it changes.)
+#
+# OPTIONAL — only for people who already run that one-liner. Two guards it
+# lacks:
+#  1. Never mirror an EMPTY / whitespace selection: clicking to place the
+#     caret must not blank the clipboard.
+#  2. Never overwrite an IMAGE on the clipboard. Without this, a photo that
+#     just arrived from the Mac/iPhone is wiped the instant you click into an
+#     app to paste it ("pastes once, then it's gone"). Text selections still
+#     mirror normally whenever the clipboard holds text; to replace an image
+#     with highlighted text, use Ctrl+C explicitly.
+sel=$(cat)
+[[ -z "${sel//[[:space:]]/}" ]] && exit 0
+if wl-paste --list-types 2>/dev/null | grep -q '^image/'; then
+    exit 0
+fi
+printf %s "$sel" | wl-copy

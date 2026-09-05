@@ -1,0 +1,12 @@
+[Unit]
+Description=clipsync primary-selection mirror (highlighted text -> clipboard, never over an image)
+Documentation=https://github.com/nixfred/clipsync
+After=graphical-session.target
+
+[Service]
+ExecStart=/usr/bin/wl-paste --primary --watch %h/.local/bin/primary-mirror
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

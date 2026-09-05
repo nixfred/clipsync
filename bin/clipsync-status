@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# clipsync-status — is the Linux <-> Mac clipboard bridge alive and syncing?
+f="${XDG_STATE_HOME:-$HOME/.local/state}/clipsync/status"
+if ! systemctl --user is-active --quiet clipsync; then
+    echo "clipsync: DOWN (systemctl --user start clipsync)"; exit 2
+fi
+[[ -r "$f" ]] || { echo "clipsync: running, no status yet"; exit 0; }
+read -r epoch state dir kind bytes ticks < "$f"
+age=$(( $(date +%s) - epoch ))
+printf 'clipsync: %s | last %s %s %sB | status %ss ago | %s ticks\n' \
+    "$state" "$dir" "$kind" "$bytes" "$age" "$ticks"
+if (( age > 90 )); then
+    echo "  WARN status stale (${age}s) — daemon may be wedged; see: journalctl --user -u clipsync -n 20"
+    exit 1
+fi
+exit 0

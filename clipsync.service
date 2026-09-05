@@ -1,0 +1,12 @@
+[Unit]
+Description=clipsync — Linux <-> macOS (+ iPhone) clipboard bridge
+Documentation=https://github.com/nixfred/clipsync
+After=graphical-session.target
+
+[Service]
+ExecStart=%h/.local/bin/clipsync
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target
