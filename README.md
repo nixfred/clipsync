@@ -16,7 +16,12 @@ The Mac is the gateway. Linux is the client. The iPhone needs nothing installed:
 - Every transfer, error, and offline/online transition is logged. `clipsync-status` shows health at a glance.
 - `clipsync-restore-image` puts the last incoming photo back if something on your desktop replaced it before you pasted.
 
-Linux → iPhone is not a thing. iOS does not let a background process set the clipboard, and Universal Clipboard only flows Mac → iPhone when *you* paste on the phone. That direction is out of scope.
+**Linux → iPhone** goes through the Mac: copy on Linux, then paste on the
+iPhone while it is near the Mac. Each new outgoing text or image briefly
+asserts Mac user activity before setting its clipboard, because an awake but
+idle Mac can suspend Handoff advertising. This can wake the Mac's display;
+it does not unlock it or change its sleep settings. The phone fetches the
+clipboard when you paste; clipsync does not write directly to iOS.
 
 ## Requirements
 
@@ -95,6 +100,12 @@ Lines look like `mac->linux furl-image 4769259B 0520b2b75d1f 1440x2560` and `pho
 
 **Mac asleep.** clipsync backs off 15s and resumes on its own; nothing to do.
 
+**Clipboard disappeared after a service restart or an app closed.** The bridge
+checks whether Wayland still has a clipboard owner and restores the Mac's
+current content if it does not. The saved hash and image caches alone must not
+suppress that recovery. This also means clearing the local clipboard while
+sync is running restores the remote clipboard.
+
 ## How it works
 
 Each tick:
@@ -113,7 +124,8 @@ The Mac agent (`mac/uc-pull.sh`) exists because a pasteboard read over SSH does 
 - Wayland only on Linux (`wl-clipboard`). X11 would need `xclip`/`xsel` in three places — PRs welcome.
 - One Mac, one Linux box. Not a mesh.
 - The Mac has to be awake and logged in; Universal Clipboard does not work from a locked or sleeping Mac.
-- No Linux → iPhone (see above).
+- Linux → iPhone requires the phone to fetch the Mac clipboard when pasting
+  (see above); it is not a background write to iOS.
 
 ## License
 

@@ -70,6 +70,11 @@ for dep in wl-copy wl-paste ssh sha256sum basenc; do
 done
 
 SSH=(ssh -o ConnectTimeout=5 -o BatchMode=yes "$MAC_HOST")
+# An awake Mac can still suspend Handoff advertising after user inactivity.
+# Wake user activity only when forwarding a new local copy, so the iPhone
+# can discover the new clipboard. This does not unlock a locked Mac.
+MAC_WAKE="/usr/bin/caffeinate -u -t 1"
+MAC_SET_TEXT="$MAC_WAKE && pbcopy"
 MAC_TMP="/tmp/.clipsync.png"
 OSA_INFO="osascript -e 'clipboard info'"
 OSA_GET_PNG="osascript -e 'the clipboard as «class PNGf»'"
@@ -162,6 +167,23 @@ while :; do
     TICKS=$((TICKS + 1))
     last=$(last_hash)
 
+    # A saved hash is not proof that Wayland still has a clipboard owner.
+    # Service restarts and applications exiting can remove that owner while
+    # the Mac still has exactly the last synced content. Recover that content
+    # instead of suppressing it as a duplicate (including cached images/furls).
+    if ! local_types=$(wl-paste --list-types 2>"$STATE_DIR/.wlerr"); then
+        local_err=$(cat "$STATE_DIR/.wlerr" 2>/dev/null)
+        if [[ "$local_err" == *[Ww]ayland* || "$local_err" == *connect* ]]; then
+            log "ERROR wl-paste cannot reach Wayland (WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-unset}): $local_err — restart clipsync after a compositor restart"
+        fi
+        local_types=""
+    fi
+    if [[ -z "$local_types" ]]; then
+        last=none
+        REMOTE_INFO_CACHE=""
+        FURL_PATH_CACHE=""
+    fi
+
     # ---------- 0. Mac fingerprint, once per tick ----------
     remote_ok=0
     if remote_info=$("${SSH[@]}" "$OSA_INFO" 2>/dev/null); then
@@ -186,23 +208,13 @@ while :; do
     fi
 
     # ---------- 2. Local (Linux) side ----------
-    # wl-paste exits non-zero for BOTH an empty clipboard (normal, silent) and
-    # a dead Wayland connection (real error, loud). Tell them apart by stderr.
-    if ! local_types=$(wl-paste --list-types 2>"$STATE_DIR/.wlerr"); then
-        local_err=$(cat "$STATE_DIR/.wlerr" 2>/dev/null)
-        if [[ "$local_err" == *[Ww]ayland* || "$local_err" == *connect* ]]; then
-            log "ERROR wl-paste cannot reach Wayland (WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-unset}): $local_err — restart clipsync after a compositor restart"
-        fi
-        local_types=""
-    fi
-
     if [[ "${local_types:-}" == *image/png* ]]; then
         wl-paste --type image/png > "$LOCAL_IMG_TMP" 2>/dev/null || : > "$LOCAL_IMG_TMP"
         size=$(stat -c%s "$LOCAL_IMG_TMP" 2>/dev/null || echo 0)
         if (( size > 0 && size <= MAX_BYTES )); then
             local_h=$(hash_stdin < "$LOCAL_IMG_TMP")
             if [[ "$local_h" != "$last" ]]; then
-                if "${SSH[@]}" "$OSA_SET_PNG" < "$LOCAL_IMG_TMP"; then
+                if "${SSH[@]}" "$MAC_WAKE && $OSA_SET_PNG" < "$LOCAL_IMG_TMP"; then
                     echo "$local_h" > "$LAST_HASH_FILE"
                     mark_online
                     record 'linux->mac' image "$size"
@@ -220,7 +232,7 @@ while :; do
         if [[ -n "$local_clip" && ${#local_clip} -le $MAX_BYTES ]]; then
             local_h=$(printf %s "$local_clip" | hash_stdin)
             if [[ "$local_h" != "$last" ]]; then
-                if printf %s "$local_clip" | "${SSH[@]}" pbcopy; then
+                if printf %s "$local_clip" | "${SSH[@]}" "$MAC_SET_TEXT"; then
                     echo "$local_h" > "$LAST_HASH_FILE"
                     mark_online
                     record 'linux->mac' text "${#local_clip}"
